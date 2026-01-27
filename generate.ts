@@ -11,88 +11,91 @@ const s3Client = new S3Client({
 });
 
 async function build() {
-  // Fetch files from R2
   const response = await s3Client.send(new ListObjectsV2Command({ Bucket: process.env.R2_BUCKET_NAME }));
   const movies = response.Contents?.filter(f => !f.Key?.endsWith('/')) || [];
   
   const movieLinks = movies.map(m => {
     const videoUrl = `${process.env.R2_PUBLIC_URL}/${m.Key}`;
     const fileName = m.Key || "Unknown File";
-    
-    // We can still try to guess the MIME type for better TV support
-    const ext = m.Key?.split('.').pop()?.toLowerCase();
-    let type = "video/mp4"; // Default fallback
-    if (ext === 'mkv') type = "video/x-matroska";
-    if (ext === 'webm') type = "video/webm";
-
-    return `<a href="${videoUrl}" data-type="${type}" class="movie-link" onclick="playVideo(this.href, this.getAttribute('data-type')); return false;">${fileName}</a>`;
-  }).join('<br>');
+    return `<a href="${videoUrl}" class="movie-link" onclick="playVideo('${videoUrl}'); return false;">${fileName}</a>`;
+  }).join('');
 
   const html = `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>TV Movie Portal</title>
     <style>
-        body { 
-            background: #1a1a1a; 
-            color: #ffffff; 
-            font-family: Arial, sans-serif; 
-            text-align: center; 
-            padding-top: 20px; 
-        }
-        #player-wrapper {
-            margin-bottom: 30px;
-        }
-        /* Fixed width as requested */
-        video { 
-            width: 800px; 
-            background: #000; 
-            border: 2px solid #444;
-        }
-        .link-container {
-            text-align: left;
-            display: inline-block;
-            max-width: 800px;
-            width: 100%;
-        }
-        .movie-link {
-            display: block;
-            padding: 15px;
-            color: #00bfff;
-            text-decoration: none;
-            font-size: 1.2rem;
-            border-bottom: 1px solid #333;
-        }
-        /* Critical for TV remote navigation */
-        .movie-link:focus {
-            background: #ffffff;
-            color: #000000;
-            outline: none;
-        }
+        body { background: #1a1a1a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
+        .container { width: 100%; }
+        .video-section { float: left; width: 65%; }
+        .list-section { float: right; width: 30%; background: #222; padding: 10px; border: 1px solid #444; height: 85vh; overflow-y: auto; }
+        video { width: 100%; background: #000; border: 1px solid #555; }
+        .seek-box { margin-top: 20px; padding: 15px; background: #333; }
+        input { padding: 15px; font-size: 20px; width: 100px; vertical-align: middle; }
+        button { padding: 15px 25px; font-size: 20px; background: #00bfff; color: #fff; border: none; vertical-align: middle; }
+        .movie-link { display: block; padding: 15px; color: #00bfff; text-decoration: none; border-bottom: 1px solid #333; font-size: 18px; }
+        .movie-link:focus, button:focus, input:focus { background: yellow; color: #000; outline: none; }
+        .clearfix:after { content: ""; display: table; clear: both; }
     </style>
 </head>
 <body>
 
-    <div id="player-wrapper">
-        <video id="tvPlayer" controls>
-            Your TV browser is too old to support the HTML5 video tag.
-        </video>
+    <div class="container clearfix">
+        <div class="video-section">
+            <video id="tvPlayer" controls preload="auto">
+                <p>HTML5 Video not supported</p>
+            </video>
+
+            <div class="seek-box">
+                <input type="number" id="seekMin" placeholder="Min" value="0">
+                <button onclick="manualSeek()">Seek to Minute</button>
+            </div>
+        </div>
+
+        <div class="list-section">
+            <h3 style="margin: 0 0 10px 0;">Movie List</h3>
+            ${movieLinks}
+        </div>
     </div>
 
-    <div class="link-container">
-        <h3>Select a Movie:</h3>
-        ${movieLinks}
-    </div>
+    <script type="text/javascript">
+        var player = document.getElementById('tvPlayer');
 
-    <script>
         function playVideo(url) {
-            var player = document.getElementById('tvPlayer');
             player.src = url;
-            player.load(); // Forces the player to update
+            player.load();
             player.play();
-            // Scroll back to top so user sees the video
-            window.scrollTo(0,0);
+        }
+
+        function manualSeek() {
+            var min = document.getElementById('seekMin').value;
+            var targetSeconds = parseInt(min) * 60;
+            
+            if (isNaN(targetSeconds)) return;
+
+            // Tizen 2.1 logic: 
+            // 1. Ensure the video is in a 'playing' state before seeking
+            // 2. Try fastSeek if available, otherwise use currentTime
+            
+            if (player.readyState > 0) {
+                try {
+                    if (player.fastSeek) {
+                        player.fastSeek(targetSeconds);
+                    } else {
+                        player.currentTime = targetSeconds;
+                    }
+                } catch (e) {
+                    // Fallback: If direct seek fails, re-load with time fragment
+                    var currentSrc = player.currentSrc.split('#')[0];
+                    player.src = currentSrc + "#t=" + targetSeconds;
+                    player.load();
+                    player.play();
+                }
+            } else {
+                alert("Wait for video to start before seeking.");
+            }
         }
     </script>
 

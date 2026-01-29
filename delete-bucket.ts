@@ -9,9 +9,10 @@ const s3 = new S3Client({
   },
 });
 
-async function emptyBucket(bucketName: string) {
+async function emptyBucket() {
   let truncated = true;
   let continuationToken: string | undefined;
+  let bucketName = process.env.R2_BUCKET_NAME!;
 
   console.log(`Emptying bucket: ${bucketName}`);
 
@@ -39,4 +40,4 @@ async function emptyBucket(bucketName: string) {
   console.log("Bucket is now empty.");
 }
 
-emptyBucket(process.env.R2_BUCKET_NAME!).catch(console.error);
+emptyBucket().catch(console.error);

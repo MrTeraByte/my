@@ -62,7 +62,7 @@ async function uploadVideo(videoUrl: string, fileName: string) {
     });
 
     upload.on("httpUploadProgress", (progress) => {
-      console.log(`Uploaded: ${progress.loaded} bytes`);
+      console.log(`Uploaded: ${(progress.loaded / (1024 * 1024)).toFixed(2)} MB`);
     });
 
     await upload.done();

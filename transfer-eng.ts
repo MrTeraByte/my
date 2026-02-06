@@ -1,8 +1,8 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import axios from "axios";
 import ffmpeg from "fluent-ffmpeg";
-import { PassThrough } from "stream";
+import fs from "fs";
+import path from "path";
 
 const r2Client = new S3Client({
   region: "auto",
@@ -14,43 +14,42 @@ const r2Client = new S3Client({
   },
 });
 
-async function uploadVideo(videoUrl: string, fileName: string) {
-  try {
-    console.log("Starting stream transfer with English as default...");
+async function processAndUpload(videoUrl: string, fileName: string) {
+  // Use the 'runner' temp directory which usually has the most space
+  const localTempFile = path.join(process.cwd(), `temp_output.mp4`);
 
-    // 1. Get the source stream
-    const response = await axios({
-      method: 'get',
-      url: videoUrl,
-      responseType: 'stream'
+  try {
+    console.log(`Starting processing for: ${fileName}`);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(videoUrl) // FFmpeg reads directly from the URL (saves 5GB disk space)
+        .outputOptions([
+          "-map 0:v:0",
+          "-map 0:a:m:language:eng", // Select English
+          "-c copy",                  // Fast, no CPU heat
+          "-disposition:a:0 default", 
+          "-movflags +faststart"      // Essential for TV/Web seeking
+        ])
+        .on("start", (cmd) => console.log("FFmpeg started..."))
+        .on("progress", (p) => console.log(`Processing: ${p.percent}% done`))
+        .on("error", (err) => reject(err))
+        .on("end", () => resolve(true))
+        .save(localTempFile); // Only THIS file takes up disk space
     });
 
-    // 2. Create a bridge to pass FFmpeg output to the S3 Upload
-    const ffmpegOutputBridge = new PassThrough();
-
-    // 3. Process the stream
-    ffmpeg(response.data)
-      .outputOptions([
-        "-map 0",                            // Keep all streams (Video, All Audios, Subs)
-        "-c copy",                           // Direct stream copy (No re-encoding)
-        "-disposition:a 0",                  // Turn off 'default' for all audio tracks
-        "-disposition:a:m:language:eng default", // Set English as the default
-        "-f matroska"                        // Pipe-friendly container
-      ])
-      .on("error", (err) => {
-        console.error("FFmpeg Error:", err.message);
-      })
-      .pipe(ffmpegOutputBridge);
-
-    // 4. Upload to R2
+    console.log("Processing finished. Starting upload to R2...");
+    
+    const fileStream = fs.createReadStream(localTempFile);
     const upload = new Upload({
       client: r2Client,
       params: {
         Bucket: process.env.R2_BUCKET_NAME!,
-        Key: fileName, // Use the original filename (e.g., .mkv or .mp4)
-        Body: ffmpegOutputBridge,
-        ContentType: "video/x-matroska", // Matroska is safer for stream-piping
+        Key: fileName.endsWith('.mp4') ? fileName : `${fileName}.mp4`,
+        Body: fileStream,
+        ContentType: "video/mp4",
       },
+      queueSize: 4, // Upload parts in parallel
+      partSize: 10 * 1024 * 1024, // 10MB chunks
     });
 
     upload.on("httpUploadProgress", (p) => {
@@ -58,13 +57,18 @@ async function uploadVideo(videoUrl: string, fileName: string) {
     });
 
     await upload.done();
-    console.log("Upload complete! English is now the default audio.");
+    console.log("🚀 Success! Uploaded to R2.");
 
   } catch (err) {
-    console.error("Transfer failed:", err);
+    console.error("Workflow failed:", err);
     process.exit(1);
+  } finally {
+    if (fs.existsSync(localTempFile)) {
+      fs.unlinkSync(localTempFile);
+      console.log("Cleaned up local temp file.");
+    }
   }
 }
 
 const [videoUrl, fileName] = process.argv.slice(2);
-uploadVideo(videoUrl, fileName);
+processAndUpload(videoUrl, fileName);

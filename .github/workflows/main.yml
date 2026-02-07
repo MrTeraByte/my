@@ -1,36 +1,26 @@
-name: Download and Upload to R2
-
+name: R2 Movie Uploader
 on:
   workflow_dispatch:
     inputs:
       download_url:
-        description: 'The direct link to the .rar file'
+        description: 'Direct link to .rar'
         required: true
-        type: string
 
 jobs:
-  process-movies:
+  upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-
       - name: Install dependencies
-        run: |
-          npm install @aws-sdk/client-s3 axios
-          npm install -g tsx typescript
-
-      - name: Run Upload Script
+        run: npm install @aws-sdk/client-s3 @aws-sdk/lib-storage axios tsx
+      - name: Run Script
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           DOWNLOAD_URL: ${{ github.event.inputs.download_url }}
-        run: tsx upload.ts
+        run: tsx rar-upload.ts

@@ -14,20 +14,13 @@ jobs:
   process:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install @aws-sdk/client-s3 @aws-sdk/lib-storage axios ts-node @types/node
 
       - name: Run Script
         env:

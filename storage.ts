@@ -41,7 +41,7 @@ export async function getBucketUsage(bucketName: string) {
   };
 }
 
-const usage = await getBucketUsage(process.env.R2_BUCKET_NAME);
+const usage = getBucketUsage(process.env.R2_BUCKET_NAME);
 
 console.log("Total Used (bytes):", usage.totalBytes);
 console.log("Total Used (MB):", usage.totalMB);

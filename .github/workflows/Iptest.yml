@@ -1,0 +1,19 @@
+name: Connectivity Test
+
+on: 
+  workflow_dispatch: # Allows you to run this manually from the "Actions" tab
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install ping (if missing)
+        run: sudo apt-get update && sudo apt-get install -y iputils-ping
+
+      - name: Test Ping (ICMP)
+        # Note: We use -c 4 to send only 4 packets so it doesn't run forever
+        run: ping -c 4 172.16.50.8 || echo "Ping failed (ICMP might be blocked)"
+
+      - name: Test Web Reachability (HTTP)
+        # More reliable for web servers; returns the HTTP status code
+        run: curl -I --connect-timeout 5 http://172.16.50.8 || echo "HTTP check failed"
